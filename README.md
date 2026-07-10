@@ -1,6 +1,43 @@
-# Cross-Platform Identity Hardening: Active Directory & Linux PAM Integration
+# Multi-Zone Perimeter Security and Cross-Platform Enterprise Identity Hardening
 
-## Project Overview
+## Technical Specifications & Topology
+* **Hypervisor Platform:** UTM / Apple Silicon Hypervisor Framework
+* **Perimeter Security:** OPNsense Firewall (FreeBSD-based Appliance)
+* **External Attack Vector Node:** Ubuntu Server LTS (`192.168.64.X /24` Zone)
+* **Internal Target Node:** Debian Server (`192.168.100.X /24` Zone)
+* **Central Identity Control Plane:** Windows Server Domain Controller (`corp.local`)
+* **Integration Framework:** System Security Services Daemon (SSSD), Pluggable Authentication Modules (PAM) Stacking
+
+
+## Project 1: Virtual Network Perimeter & Transport-Layer Evasion
+
+### 1. Network Topology & Perimeter Routing
+To bypass the unrealistic nature of flat virtual switches, I engineered a true multi-zone perimeter environment. I deployed an **OPNsense firewall** as a central virtual appliance to enforce strict Layer 3 network segmentation, isolating my Ubuntu attacking node on the external WAN segment from my target Debian server on a private internal LAN zone.
+
+#### Infrastructure Blocker & Resolution
+During early testing, incoming traffic to disabled ports timed out as `FILTERED` instead of instantly dropping as `CLOSED`. By analyzing the OPNsense state table and inspecting the Live View traffic log telemetry, I diagnosed a dual-fault infrastructure conflict:
+1. **NAT Precedence:** The firewall's network address translation engine was dropping unroutable inbound packets prior to evaluating my manual interface rules.
+2. **CIDR Mismatch:** I identified an accidental `/32` host mask allocation on the destination object instead of the required `/24` subnet boundaries.
+
+**The Fix:** I stripped the conflicting NAT map entries, corrected the target mask to match the internal network architecture, and confirmed via firewall telemetry that OPNsense was actively shooting back `RST` packets to reject scanning probes at the edge.
+
+### 2. Transport-Layer Evasion & System Compromise
+
+#### The Loud Approach (Hydra Brute-Force & Access Exploitation)
+With the perimeter verified, I evaluated host-based logging limitations against network-level visibility. I initiated an explicit brute-force credential attack against Port 22 (SSH) using Hydra from my Ubuntu attacking node. 
+
+**The Result:** My attack successfully cracked the target credentials. I used the recovered parameters to establish a live SSH session from the Ubuntu node, bypassing the network boundary and gaining **full interactive terminal access over the target Debian server**. However, because this completed a full TCP 3-way handshake (`SYN` → `SYN-ACK` → `ACK`), my inspection of the internal target's application logs confirmed a massive, noisy forensic trail:
+
+```bash
+# Target Debian Machine Log Audit showing the successful compromise via Hydra
+$ journalctl -t sshd
+Jun 21 14:22:01 debian-target sshd[4012]: Accepted password for root from 192.168.64.15 port 22 ssh2
+
+
+To evaluate how an attacker could map out the same target layout without ringing user-space alarms, I authored a custom Python script using the Scapy library to execute a half-open TCP SYN scan. The script builds raw packets to send an isolated SYN flag, catches the target's SYN-ACK response to verify the port, and immediately drops an RST frame to break the socket before the final handshake stage. This process prevents the kernel from escalating the connection to application logging handlers—leaving journalctl blind to the reconnaissance phase. Proving the difference in user and network based detection and journaling, as the opnsense firewall did register the connection. 
+
+## Project 2: Enterprise Escalation & Active Directory Federation
+## Project 2 Overview
 This project demonstrates the enterprise integration of heterogeneous Linux endpoints (**Ubuntu Desktop** and **Debian Server**) into a centralized Windows Active Directory forest (`corp.local`). The objective was to eliminate "fail-open" authentication bugs and enforce centralized, time-based administrative access controls (**Logon Hours**) managed at the Domain Controller level.
 
 ## Architecture & Data Flow
