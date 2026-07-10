@@ -9,7 +9,7 @@ The lab is structured into isolated operational modules to demonstrate cross-pla
 
 ## Repository Architecture
 
-### [Project 1: Advanced Network Surveillance & Layer 4 Perimeter Defense](./project1-network-surveillance/)
+### [Project 1: Advanced Network Surveillance & Layer 4 Perimeter Defense](./project1-network-perimeter/)
 * **Focus:** Low-level network telemetry, custom Python scanning infrastructure, and host-log evasion.
 * **Core Artifacts:** Custom Scapy stealth scanning script, live OPNsense firewall log telemetry.
 * **Objective:** Developing tactical scripts to audit internal perimeter tracking while capturing real-time stateless connection alerts at the network edge.
