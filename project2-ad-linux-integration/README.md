@@ -13,5 +13,26 @@ To manage unmaintained endpoints and eliminate localized "fail-open" authenticat
 ### Baseline: Permitted Window Access
 Authenticating as a domain user within authorized hours logs in smoothly across the edge nodes, generating clean server-side authentication events matching Active Directory Security Audit Event 4624.
 
+#### Debian Node Authentication Parity
+Below is the correlation tracking an active SSH authentication session established on the Debian client node, instantly generating a corresponding centralized successful authentication log on the Windows Domain Controller down to the exact second (15:26:48):
+
+| Linux Local Client Syslog (`/var/log/auth.log`) | Windows Domain Controller Centralized Log (Event 4624) |
+| :---: | :---: |
+| ![Debian SSH Session Opened](../images/project2/1.png) | ![DC Security Audit Success](../images/project2/2.png) |
+
+#### Ubuntu Node Authentication Parity
+Below is the matching tracking matrix for the Ubuntu client node. The local systemd-logind session initializes at 16:43:40, triggering the real-time Kerberos/LDAP verification event on the Windows DC (CorpControl.corp.local) at the exact identical time marker:
+
+| Linux Local Client Syslog (`/var/log/auth.log`) | Windows Domain Controller Centralized Log (Event 4624) |
+| :---: | :---: |
+| ![Ubuntu Session Opened](../images/project2/3.png) | ![DC Security Audit Success](../images/project2/4.png) |
+
 ### Enforcement: After-Hours Administrative Lockout
-When attempting an interactive login past the authorized window (e.g., 5:00 PM), the local edge PAM framework evaluates the account parameters pulled by `pam_sss`, drops the authentication pipeline instantly, and passes back a masked `Permission denied` error to the terminal.
+When attempting an interactive login past the authorized window (5:00 PM), the local edge PAM framework evaluates the account parameters pulled by pam_sss, drops the authentication pipeline instantly, and passes back a masked Permission denied error to the terminal.
+
+#### Lockout Telemetry & Audit Trail
+Below is the verification showing the system successfully denying access after hours. The client terminal triggers an immediate rejection, while the Windows Domain Controller registers the explicit restriction policy enforcement:
+
+| Linux Client Lockout Terminal | Windows DC Policy Enforcement Log |
+| :---: | :---: |
+| ![Linux Permission Denied](../images/project2/5.png) | ![DC Logon Hours Failure Audit](../images/project2/6.png) |
