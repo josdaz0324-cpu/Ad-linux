@@ -8,7 +8,7 @@ This phase evaluates host-based logging visibility against network-level telemet
 ### Transport-Layer Evasion & System Compromise
 
 #### The Loud Approach (Hydra Brute-Force)
-I initiated an explicit brute-force credential attack against Port 22 (SSH) using Hydra from the WAN segment. While the attack recovered credentials and granted interactive access, it triggered prominent user-space logging trail entries inside `journalctl`:
+I initiated an explicit brute-force credential attack against Port 22 (SSH) using Hydra from the WAN segment. While the attack recovered credentials and granted interactive access, it triggered prominent user-space logging trail entries inside journalctl:
 
 ```bash
 # Target Debian Machine Log Audit showing the successful compromise via Hydra
@@ -20,25 +20,32 @@ To contrast the loud application-layer footprint of Hydra, I developed a custom 
 
 * **Script Blueprints:** [syn_scanner.py](./syn_scanner.py)
 
-Because the script instantly fires a state reset (`RST`) upon receiving a `SYN-ACK`, the target node's operating system never passes the socket up to user-space services. Consequently, host-layer utilities like `journalctl` or `/var/log/auth.log` record **absolute silence**, proving host-layer logging evasion.
+Because the script instantly fires a state reset (RST) upon receiving a SYN-ACK, the target node's operating system never passes the socket up to user-space services. Consequently, host-layer utilities like journalctl or /var/log/auth.log record **absolute silence**, proving host-layer logging evasion.
+
+> **Note:** This was the first lab in this series, done before I'd settled into a habit of 
+> capturing terminal/firewall output as I went. The environment was later repurposed for 
+> Project 2, so the original logs no longer exist. The technique, diagnosis, and fix are 
+> described above from memory and configuration notes; no output was preserved.
+
 
 ---
 
-## Engineering Challenges: Symmetrical Routing & NAT Tunnels
-During implementation, the testing framework broke down because the custom scanner subnet could not track a clean return path to the target DMZ node. 
+## Engineering Challenge: NAT Precedence & CIDR Misconfiguration
 
-Packets successfully exited the attacker interface but dropped silently at the edge firewall because the routing tables lacked symmetrical transition vectors.
+During early testing, connections to closed ports on the target were timing out as FILTERED instead of returning an immediate CLOSED response. This didn't match the behavior I expected from a correctly configured firewall, so I dug into the OPNsense state table and Live View traffic logs to figure out why.
 
-### Resolution Architecture
-1. **Interface Tracking:** Audited interface mapping tables inside the OPNsense routing console.
-2. **Outbound NAT Translation:** Deployed a static outbound NAT mapping to allow stateful packet translation back across the internal interface.
-3. **Gateway Adaptation:** Appended a persistent default gateway metric inside the client adapter configuration, ensuring zero-loss packet delivery.
+I found two separate issues stacked on top of each other:
 
----
+1. **NAT precedence** — OPNsense's NAT engine was evaluating and dropping unroutable inbound packets *before* my manually configured interface rules ever got a chance to run. The firewall was silently discarding traffic upstream of the rules I thought were in control.
+2. **CIDR mismatch** — the destination object for my internal rule was set to a /32 host mask instead of the /24 subnet it needed to cover. This meant the rule only matched a single IP instead of the whole internal network.
 
-## Forensic Telemetry
+### Resolution
 
-While the target host remained completely blind to the low-level stealth scan, the stateless perimeter firewall caught the connection attempts perfectly at the interface border.
+- Removed the conflicting NAT mapping entries so inbound traffic reached my interface rules as intended.
+- Corrected the destination object's mask from /32 to /24 to match the actual internal subnet.
+- Confirmed the fix by watching OPNsense's Live View: the firewall was now actively returning RST packets at the edge in response to scan probes, instead of silently dropping them.
 
-Below is the side-by-side forensic matrix showing how network-layer reconnaissance evades basic host telemetry while lighting up edge monitoring systems:
-
+> **Note:** This was the first lab in this series, done before I'd settled into a habit of 
+> capturing terminal/firewall output as I went. The environment was later repurposed for 
+> Project 2, so the original logs no longer exist. The technique, diagnosis, and fix are 
+> described above from memory and configuration notes; no output was preserved.
