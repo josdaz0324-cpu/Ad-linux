@@ -1,315 +1,35 @@
-# Multi-Zone Perimeter Security and Cross-Platform Enterprise Identity Hardening
+# Corporate Infrastructure Security Lab & Defensive Engineering Portfolio
 
-## Technical Specifications & Topology
-* **Hypervisor Platform:** UTM / Apple Silicon Hypervisor Framework
-* **Perimeter Security:** OPNsense Firewall (FreeBSD-based Appliance)
-* **External Attack Vector Node:** Ubuntu Server LTS (192.168.64.X /24 Zone)
-* **Internal Target Node:** Debian Server (192.168.100.X /24 Zone)
-* **Central Identity Control Plane:** Windows Server Domain Controller (corp.local)
-* **Integration Framework:** System Security Services Daemon (SSSD), Pluggable Authentication Modules (PAM) Stacking
+## Overview
+This repository contains actionable defense blueprints, infrastructure configurations, and forensic telemetry demonstrating defensive engineering across enterprise identity planes and network perimeters. 
 
-
-## Project 1: Virtual Network Perimeter & Transport-Layer Evasion
-
-### 1. Network Topology & Perimeter Routing
-To bypass the unrealistic nature of flat virtual switches, I engineered a true multi-zone perimeter environment. I deployed an **OPNsense firewall** as a central virtual appliance to enforce strict Layer 3 network segmentation, isolating my Ubuntu attacking node on the external WAN segment from my target Debian server on a private internal LAN zone.
-
-#### Infrastructure Blocker & Resolution
-During early testing, incoming traffic to disabled ports timed out as FILTERED instead of instantly dropping as CLOSED. By analyzing the OPNsense state table and inspecting the Live View traffic log telemetry, I diagnosed a dual-fault infrastructure conflict:
-1. **NAT Precedence:** The firewall's network address translation engine was dropping unroutable inbound packets prior to evaluating my manual interface rules.
-2. **CIDR Mismatch:** I identified an accidental (/32) host mask allocation on the destination object instead of the required (/24) subnet boundaries.
-
-**The Fix:** I stripped the conflicting NAT map entries, corrected the target mask to match the internal network architecture, and confirmed via firewall telemetry that OPNsense was actively shooting back `RST` packets to reject scanning probes at the edge.
-
-### 2. Transport-Layer Evasion & System Compromise
-
-#### Hydra Brute-Force & Access Exploitation
-With the perimeter verified, I evaluated host-based logging limitations against network-level visibility. I initiated an explicit brute-force credential attack against Port 22 (SSH) using Hydra from my Ubuntu attacking node. 
-
-**The Result:** My attack successfully cracked the target credentials. I used the recovered parameters to establish a live SSH session from the Ubuntu node, bypassing the network boundary and gaining **full interactive terminal access over the target Debian server**. However, because this completed a full TCP 3-way handshake (SYN → SYN-ACK → ACK), my inspection of the internal target's application logs confirmed a massive, noisy forensic trail:
-
-```bash
-# Target Debian Machine Log Audit showing the successful compromise via Hydra
-$ journalctl -t sshd
-Jun 21 14:22:01 debian-target sshd[4012]: Accepted password for root from 192.168.64.15 port 22 ssh2
-```
-
-
-To evaluate how an attacker could map out the same target layout without ringing user-space alarms, I authored a custom Python script using the Scapy library to execute a half-open TCP SYN scan. The script builds raw packets to send an isolated SYN flag, catches the target's SYN-ACK response to verify the port, and immediately drops an RST frame to break the socket before the final handshake stage. This process prevents the kernel from escalating the connection to application logging handlers—leaving journalctl blind to the reconnaissance phase. Proving the difference in user and network based detection and journaling, as the opnsense firewall did register the connection. 
-#### The Stealth Approach (Custom Scapy Half-Open Scan)
-To evaluate how an attacker could map out the same target layout without ringing user-space alarms, I authored a custom Python script using the **Scapy** library to execute a half-open TCP SYN scan. The script builds raw packets to send an isolated `SYN` flag, catches the target's `SYN-ACK` response to verify the port, and immediately drops an `RST` frame to break the socket before the final handshake stage. 
-
-This process prevents the kernel from escalating the connection to application logging handlers—leaving `journalctl` blind to the reconnaissance phase. This explicitly proved the operational difference between user and network-based detection and journaling, as my **OPNsense firewall** network interface logs did actively register and log the connection attempt.
-
-```python
-#!/usr/bin/env python3
-import random
-import time
-import sys
-import logging
-from dataclasses import dataclass, field
-from typing import Optional
-from scapy.all import IP, TCP, sr1, send, conf
-
-# Suppress Scapy runtime logging noise
-conf.verb = 0
-logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
-
-# =============================================================================
-# HARDWARE CONFIGURATION & TELEMETRY TUNING
-# =============================================================================
-TARGET_PORTS: list[int] = [22, 80]
-PROBE_TIMEOUT: int = 3
-
-# Simulated WAN link jitter bounds to stress-test target state machines
-JITTER_MIN: float = 15.0
-JITTER_MAX: float = 45.0
-
-# Real-world OS TCP window fingerprints (Linux, Windows, macOS, Embedded IoT)
-OS_WINDOW_SIZES: list[int] = [8192, 16384, 29200, 64240, 65535]
-
-
-@dataclass
-class ProbeResult:
-    """Encapsulates telemetry payload for an independent layer-4 probe."""
-    target_ip: str
-    dest_port: int
-    src_port: int
-    window_size: int
-    state: str  # "open" | "closed" | "filtered"
-    rtt_ms: Optional[float] = None
-
-
-@dataclass
-class ScanSummary:
-    """Aggregates multi-endpoint network tracking metrics."""
-    target_ip: str
-    results: list[ProbeResult] = field(default_factory=list)
-
-    @property
-    def open_ports(self) -> list[int]:
-        return [r.dest_port for r in self.results if r.state == "open"]
-
-    @property
-    def avg_rtt_ms(self) -> Optional[float]:
-        rtts = [r.rtt_ms for r in self.results if r.rtt_ms is not None]
-        return round(sum(rtts) / len(rtts), 3) if rtts else None
-
-
-# =============================================================================
-# PACKET ARCHITECTURE ENGINE
-# =============================================================================
-def get_ephemeral_port() -> int:
-    """Returns a randomized port from the extended OS ephemeral range."""
-    return random.randint(1024, 65535)
-
-
-def get_fingerprint_window() -> int:
-    """Samples an operating system window metric to test destination quirks."""
-    return random.choice(OS_WINDOW_SIZES)
-
-
-def execute_jitter_delay() -> float:
-    """Calculates variable propagation paths to simulate non-sequential flows."""
-    return random.uniform(JITTER_MIN, JITTER_MAX)
-
-
-# =============================================================================
-# CORE TELEMETRY ENGINE
-# =============================================================================
-def send_syn_probe(target_ip: str, dest_port: int) -> ProbeResult:
-    """
-    Constructs a raw Layer-3 IP packet containing a customized TCP SYN segment.
-    Evaluates response telemetry and injects an immediate RST to clean state tables.
-    """
-    src_port = get_ephemeral_port()
-    window = get_fingerprint_window()
-    isn = random.randint(1000, 9000000)
-
-    packet = (
-        IP(dst=target_ip)
-        / TCP(
-            sport=src_port,
-            dport=dest_port,
-            flags="S",
-            window=window,
-            seq=isn,
-        )
-    )
-
-    print(f"  [TX] ➔ port {dest_port:>5} | src_port={src_port} | window={window}")
-
-    t_send = time.perf_counter()
-    response = sr1(packet, timeout=PROBE_TIMEOUT, verbose=0)
-    t_recv = time.perf_counter()
-
-    rtt_ms: Optional[float] = None
-
-    if response is None:
-        state = "filtered"
-    elif response.haslayer(TCP):
-        rtt_ms = round((t_recv - t_send) * 1000, 3)
-        tcp_flags = response[TCP].flags
-
-        if tcp_flags == 0x12:  # SYN-ACK
-            state = "open"
-            rst = (
-                IP(dst=target_ip)
-                / TCP(
-                    sport=src_port,
-                    dport=dest_port,
-                    flags="R",
-                    seq=response[TCP].ack,
-                )
-            )
-            send(rst, verbose=0)
-        elif tcp_flags == 0x14:  # RST-ACK
-            state = "closed"
-        else:
-            state = "filtered"
-    else:
-        state = "filtered"
-
-    print(f"  [RX] 🠈 port {dest_port:>5} | state={state.upper():<8} | rtt={f'{rtt_ms} ms' if rtt_ms else 'N/A'}")
-
-    return ProbeResult(
-        target_ip=target_ip,
-        dest_port=dest_port,
-        src_port=src_port,
-        window_size=window,
-        state=state,
-        rtt_ms=rtt_ms,
-    )
-
-
-# =============================================================================
-# EXECUTION & LOG OUTPUT ORCHESTRATION
-# =============================================================================
-def run_scan(target_ip: str, ports: list[int]) -> ScanSummary:
-    summary = ScanSummary(target_ip=target_ip)
-    shuffled_ports = ports.copy()
-    random.shuffle(shuffled_ports)
-
-    print(f"\n{'='*60}")
-    print(f"  TARGET IDENTITY   : {target_ip}")
-    print(f"  PROBE ARRAY       : {shuffled_ports} (Shuffled Queue)")
-    print(f"  LINK JITTER BOUNDS: {JITTER_MIN}–{JITTER_MAX} s")
-    print(f"{'='*60}\n")
-
-    for idx, port in enumerate(shuffled_ports):
-        print(f"[Sequence {idx + 1}/{len(shuffled_ports)}]")
-        result = send_syn_probe(target_ip, port)
-        summary.results.append(result)
-
-        if idx < len(shuffled_ports) - 1:
-            delay = execute_jitter_delay()
-            print(f"  [~] Injecting path jitter: {delay:.2f} s...\n")
-            time.sleep(delay)
-
-    return summary
-
-
-def print_summary(summary: ScanSummary) -> None:
-    STATE_ICON = {"open": "✓", "closed": "✗", "filtered": "?"}
-
-    print(f"\n{'='*60}")
-    print(f"  TELEMETRY REPORT — {summary.target_ip}")
-    print(f"{'='*60}")
-    print(f"  {'PORT':<8} {'STATE':<10} {'SRC PORT':<12} {'WINDOW':<10} {'RTT (ms)'}")
-    print(f"  {'-'*55}")
-
-    for r in sorted(summary.results, key=lambda x: x.dest_port):
-        icon = STATE_ICON.get(r.state, "?")
-        rtt = f"{r.rtt_ms}" if r.rtt_ms is not None else "—"
-        print(f"  {icon} {r.dest_port:<7} {r.state.upper():<10} {r.src_port:<12} {r.window_size:<10} {rtt}")
-
-    print(f"  {'-'*55}")
-    print(f"  Identified Active Gateways : {summary.open_ports or 'None'}")
-    print(f"  Calculated Mean Link RTT   : {summary.avg_rtt_ms or 'N/A'} ms")
-    print(f"{'='*60}\n")
-
-
-def main() -> None:
-    if len(sys.argv) != 2:
-        sys.exit(1)
-    run_scan(sys.argv[1], TARGET_PORTS)
-
-
-if __name__ == "__main__":
-    main()
-```
-
-
-## Project 2: Enterprise Escalation & Active Directory Federation
-## Project 2 Overview
-This project demonstrates the enterprise integration of heterogeneous Linux endpoints (**Ubuntu Desktop** and **Debian Server**) into a centralized Windows Active Directory forest (corp.local). The objective was to eliminate "fail-open" authentication bugs and enforce centralized, time-based administrative access controls (**Logon Hours**) managed at the Domain Controller level.
-
-## Architecture & Data Flow
-1. **Windows Domain Controller:** Holds the master user database and the 6:00 AM – 5:00 PM logon restrictions.
-2. **SSSD (System Security Services Daemon):** Intercepts Linux login requests and passes them to AD via Kerberos/LDAP.
-3. **PAM (Pluggable Authentication Modules):** Evaluates local OS rules and forces the system to comply with SSSD rejections.
+The lab is structured into isolated operational modules to demonstrate cross-platform integration, centralized access controls, and custom network-layer monitoring tools.
 
 ---
 
-## Technical Implementations
+## Repository Architecture
 
-### 1. Active Directory Policy Configuration
-The target administrative account (linux_admin_jose) was restricted within Active Directory Users and Computers (ADUC) to a strict operational window between **6:00 AM and 5:00 PM**.
+### [Project 1: Advanced Network Surveillance & Layer 4 Perimeter Defense](./project1-network-surveillance/)
+* **Focus:** Low-level network telemetry, custom Python scanning infrastructure, and host-log evasion.
+* **Core Artifacts:** Custom Scapy stealth scanning script, live OPNsense firewall log telemetry.
+* **Objective:** Developing tactical scripts to audit internal perimeter tracking while capturing real-time stateless connection alerts at the network edge.
 
-### 2. Hardening SSSD (sssd.conf)
-To ensure Group Policy Objects (GPOs) are strictly respected and to prevent offline bypasses, credential caching was completely disabled.
-
-### 3. Hardening PAM Stacking (/etc/pam.d/common-account)
-The Linux account verification framework was modified to ensure that if Active Directory denies access, the local OS cannot fall back to a "success" state.
+### [Project 2: Enterprise Escalation & Active Directory Federation](./project2-ad-linux-integration/)
+* **Focus:** Centralized identity management, cross-platform policy enforcement, and authentication security.
+* **Core Artifacts:** Hardened System Security Services Daemon configuration (`sssd.conf`), Pluggable Authentication Modules framework (`pam.d/common-account`), side-by-side client/DC forensic logs.
+* **Objective:** Integrating heterogeneous Linux endpoints (Ubuntu & Debian) into a central Windows Server Domain Controller to enforce granular, real-time administrative access windows (**Logon Hours**) with mandatory after-hours lockout policies.
 
 ---
 
-## Verification & Forensic Proof
+## Technology Stack & Tooling
+* **Identity & Directory Services:** Active Directory Domain Services (AD DS), Kerberos, LDAP
+* **Linux Security Modules:** PAM (Pluggable Authentication Modules), SSSD (System Security Services Daemon)
+* **Network & Firewalls:** OPNsense, TCP/IP Stateless Filtering, Scapy (Python Network Engine)
+* **Operating Systems:** Windows Server 2022, Debian Linux, Ubuntu Linux
+* **Forensics & Auditing:** Linux Syslog (`/var/log/auth.log`), Windows Security Event Viewer (Event ID 4624 / Failure Audits)
 
-### Test Scenario: Live Access Window Verification (Successful Baseline)
-When the domain user authenticates within permitted hours, the execution pipeline processes cleanly across both the local client log framework and the central Active Directory Domain Controller network tracking logs.
+---
 
-#### Debian Server Connection Pair:
-Checking the local authentication log verifies the connection sequence, which explicitly registers on the Windows Domain Controller as a matching network logon event.
-![Debian pam_unix Authentication Stream](1.png)  <img width="717" height="40" alt="1" src="https://github.com/user-attachments/assets/0b98d4f9-448b-45e4-814c-240eddb5f742" />
-
-![Windows Security Audit - Event 4624 (3:26 PM)] <img width="643" height="477" alt="2" src="https://github.com/user-attachments/assets/3c7a12e9-ea4b-4246-b76a-a7d359f885b3" />
-
-
-#### Ubuntu Desktop Connection Pair:
-Similarly, verifying the interactive session initialization on the Ubuntu desktop maps perfectly to a successful cryptographic network verification on the Domain Controller.
-![Ubuntu systemd-logind Session Init]
-<img width="800" height="107" alt="3" src="https://github.com/user-attachments/assets/3eb87124-b545-410b-93fb-ed23eb624a5c" />
-
-
-![Windows Security Audit - Event 4624 (4:43 PM)]
-
-<img width="577" height="389" alt="4" src="https://github.com/user-attachments/assets/deb8a3f6-e2fe-404d-8ed5-18c01925254c" />
-
-
-### Test Scenario: After-Hours SSH Administrative Access
-* **Test Time:** Past 5:00 PM (Outside the permitted 6:00 AM – 5:00 PM window)
-* **Action:** Attempting an interactive loopback SSH session as the domain administrator.
-
-### Proof 1: Endpoint Session Lockout (User Experience)
-When attempting to connect, the system correctly processes the credentials but throws a secure, masked access rejection.
-
-<img width="660" height="156" alt="image" src="https://github.com/user-attachments/assets/ba815ad4-c903-4dcd-9199-22b28bdc4378" />
-
-<img width="409" height="75" alt="image" src="https://github.com/user-attachments/assets/1c9cc702-270d-4680-93fb-fff87f965be0" />
-
-### Proof 2: Linux Authentication Telemetry
-Checking the local authentication infrastructure logs shows that PAM successfully handled the real-time SSSD rejection tracking code. The local SSSD caches handle the time regulation autonomously on the edge nodes, immediately blocking access after 5:00 PM.
-
-#### Ubuntu Client Local PAM Block:
-![Ubuntu pam_sss System Error Telemetry]
-
-<img width="802" height="159" alt="5" src="https://github.com/user-attachments/assets/e60223b4-8b52-4dfe-b318-73cc23b9ff70" />
-
-#### Debian Server Local PAM Block:
-![Debian pam_sss Permission Denied Telemetry]
-<img width="870" height="161" alt="6" src="https://github.com/user-attachments/assets/badaa4e7-6088-4739-b683-4a9e8f19f1d4" />
-
-
-### Proof 3: Active Directory Policy Boundary & Edge Enforcement
-Because the Linux machines resolve account parameters locally via SSSD, the logon hours restriction is enforced directly at the local gateway by the Linux PAM framework (pam_sss) rather than by the Windows AD. When an SSH attempt is made past 5:00 PM, the local system evaluates the cached account attributes, identifies the time restriction violation, and drops the connection instantly with a Permission denied error. Because the authentication attempt is intercepted and blocked internally by Linux, no authentication traffic reaches the Windows Domain Controller, keeping the server-side Event Viewer clear while successfully securing the endpoint.
+## How to Review This Lab
+1. Navigate into individual project directories to review raw infrastructure configuration assets and scripts.
+2. Read the dedicated markdown guides inside each folder for deep-dive technical explanations, operational breakdowns, and side-by-side forensic telemetry screenshots proving successful policy execution.
