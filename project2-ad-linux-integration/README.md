@@ -1,7 +1,7 @@
 # Project 2: Enterprise Escalation & Active Directory Federation
 
 ## Overview
-To manage unmaintained endpoints and eliminate localized "fail-open" authentication vulnerabilities, I scaled the lab into a centralized enterprise identity model. This folder contains the configuration blueprints used to integrate heterogeneous Linux nodes into a Windows Server Domain Controller (`corp.local`) to enforce centralized, real-time administrative access windows (**Logon Hours**).
+To manage unmaintained endpoints and eliminate localized "fail-open" authentication vulnerabilities, I scaled the lab into a centralized enterprise identity model. This folder contains the configuration blueprints used to integrate heterogeneous Linux nodes into a Windows Server Domain Controller (corp.local) to enforce centralized, real-time administrative access windows (**Logon Hours**).
 
 ## Operational Architecture
 1. **Identity Plane:** Windows Server Domain Controller managing user accounts and time-restriction matrices.
