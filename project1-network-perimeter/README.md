@@ -42,6 +42,3 @@ While the target host remained completely blind to the low-level stealth scan, t
 
 Below is the side-by-side forensic matrix showing how network-layer reconnaissance evades basic host telemetry while lighting up edge monitoring systems:
 
-| Local Attacker Scanning Terminal | OPNsense Edge Firewall Live System Log |
-| :---: | :---: |
-| *[Pending Terminal Log]* | *[Pending Firewall Log]* |
