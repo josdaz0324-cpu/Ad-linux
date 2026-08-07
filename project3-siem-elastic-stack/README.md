@@ -2,7 +2,7 @@
 
 ## Overview
 
-To eliminate blind spots across enterprise infrastructure and enable centralized detection capabilities, I expanded the lab environment to include a containerized Security Information and Event Management (SIEM) pipeline. This folder details the deployment of an Elastic Stack (Elasticsearch & Kibana) instance on an Ubuntu Server (`jose-siem`) to aggregate and analyze real-time security events from the Windows Server Domain Controller (`corp.local`).
+To eliminate blind spots across enterprise infrastructure and enable centralized detection capabilities, I expanded the lab environment to include a containerized Security Information and Event Management (SIEM) pipeline. This folder details the deployment of an Elastic Stack (Elasticsearch & Kibana) instance on an Ubuntu Server (`jose-siem`) to aggregate and analyze real-time security events from the Windows Server Domain Controller (corp.local).
 
 ## Operational Architecture
 
