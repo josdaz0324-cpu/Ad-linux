@@ -2,7 +2,7 @@
 
 ## Overview
 
-To eliminate blind spots across enterprise infrastructure and enable centralized detection capabilities, I expanded the lab environment to include a containerized Security Information and Event Management (SIEM) pipeline. This folder details the deployment of an Elastic Stack (Elasticsearch & Kibana) instance on an Ubuntu Server (`jose-siem`) to aggregate and analyze real-time security events from the Windows Server Domain Controller (corp.local).
+To eliminate blind spots across enterprise infrastructure and enable centralized detection capabilities, I expanded the lab environment to include a containerized Security Information and Event Management (SIEM) pipeline. This folder details the deployment of an Elastic Stack (Elasticsearch & Kibana) instance on an Ubuntu Server (`jose-siem`) to aggregate and analyze real-time security events from the Windows Server Domain Controller (`corp.local`).
 
 ## Operational Architecture
 
@@ -18,7 +18,7 @@ To maintain environment parity, the core SIEM components were pulled and deploye
 
 | Docker Image Acquisition | Active Container Stack Verification |
 | :---: | :---: |
-| ![Docker Image Pull](../images/initial-docker-install.png) | ![Container Status](../images/docker-status-running.png) |
+| ![Docker Image Pull](./initial-docker-install.png) | ![Container Status](./docker-status-running.png) |
 
 ---
 
@@ -28,7 +28,7 @@ Kibana service tokens were generated directly within the running Elasticsearch c
 
 | Service Token Generation | Configuration Injection |
 | :---: | :---: |
-| ![Token Creation](../images/elastic-token-creation.png) | ![Kibana Config Injection](../images/kibana-cleanup.png) |
+| ![Token Creation](./elastic-token-creation%20.png) | ![Kibana Config Injection](./kibana-cleanup.png) |
 
 ---
 
@@ -38,7 +38,7 @@ To avoid formatting errors caused by multi-line installation pipelines in remote
 
 | Payload Retrieval via Local Web Server |
 | :---: |
-| ![Curl Script Retrieval](../images/curl-setup.png) |
+| ![Curl Script Retrieval](./curl-setup.png) |
 
 ---
 
@@ -50,14 +50,24 @@ To resolve this in the lab environment, the execution string was modified to inc
 
 | TLS Certificate Validation Failure | Active Fleet Daemon Verification |
 | :---: | :---: |
-| ![Fleet Installation Error](../images/fleet-error-installation.png) | ![Fleet Server Success](../images/elastic-installation-Ubuntu_server.png) |
+| ![Fleet Installation Error](./fleet-error-installation.png) | ![Fleet Server Success](./elastic-installation-Ubuntu_server.png) |
 
 ---
 
-### Endpoint Enrollment & Log Forwarding
+### Endpoint Enrollment & Fleet Verification
 
-With the Fleet control plane operational, the Elastic Agent was deployed on the Windows Server Domain Controller via PowerShell. Passing the `--insecure` parameter handled the local PKI override, successfully enrolling the Domain Controller into the Fleet policy.
+With the Fleet control plane operational, the Elastic Agent was deployed on the Windows Server Domain Controller (`corpcontrol`) via PowerShell. Passing the `--insecure` parameter handled the local PKI override, successfully enrolling the Domain Controller into the Fleet policy.
 
-| Domain Controller Endpoint Enrollment |
-| :---: |
-| ![Windows Agent Enrollment](../images/elastic-installation-windows.png) |
+| Domain Controller Endpoint Enrollment | Fleet Server Host Active |
+| :---: | :---: |
+| ![Windows Agent Enrollment](./elastic-installation-windows.png) | ![Fleet Server Active](./fleet-active-1.png) |
+
+---
+
+### Centralized Log Ingestion & Telemetry Verification
+
+With both `jose-siem` and `corpcontrol` reporting healthy statuses back to Fleet, incoming Windows audit logs were verified in the Kibana Discover dashboard, confirming active telemetry streaming across the environment.
+
+| Dual-Agent Fleet Health | Kibana Telemetry Stream Verification |
+| :---: | :---: |
+| ![Dual Fleet Status](./fleet-active-2.png) | ![Live Log Stream Hits](./final-logs.png) |
