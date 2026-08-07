@@ -18,7 +18,7 @@ To maintain environment parity, the core SIEM components were pulled and deploye
 
 | Docker Image Acquisition | Active Container Stack Verification |
 | :---: | :---: |
-| ![Docker Image Pull](./initial-docker-install.png) | ![Container Status](./docker-status-running.png) |
+| ![Docker Image Pull](images/initial-docker-install.png) | ![Container Status](images/docker-status-running.png) |
 
 ---
 
@@ -28,7 +28,7 @@ Kibana service tokens were generated directly within the running Elasticsearch c
 
 | Service Token Generation | Configuration Injection |
 | :---: | :---: |
-| ![Token Creation](./elastic-token-creation%20.png) | ![Kibana Config Injection](./kibana-cleanup.png) |
+| ![Token Creation](images/elastic-token-creation%20.png) | ![Kibana Config Injection](images/kibana-cleanup.png) |
 
 ---
 
@@ -38,7 +38,7 @@ To avoid formatting errors caused by multi-line installation pipelines in remote
 
 | Payload Retrieval via Local Web Server |
 | :---: |
-| ![Curl Script Retrieval](./curl-setup.png) |
+| ![Curl Script Retrieval](images/curl-setup.png) |
 
 ---
 
@@ -50,7 +50,7 @@ To resolve this in the lab environment, the execution string was modified to inc
 
 | TLS Certificate Validation Failure | Active Fleet Daemon Verification |
 | :---: | :---: |
-| ![Fleet Installation Error](./fleet-error-installation.png) | ![Fleet Server Success](./elastic-installation-Ubuntu_server.png) |
+| ![Fleet Installation Error](images/fleet-error-installation.png) | ![Fleet Server Success](images/elastic-installation-Ubuntu_server.png) |
 
 ---
 
@@ -60,7 +60,7 @@ With the Fleet control plane operational, the Elastic Agent was deployed on the 
 
 | Domain Controller Endpoint Enrollment | Fleet Server Host Active |
 | :---: | :---: |
-| ![Windows Agent Enrollment](./elastic-installation-windows.png) | ![Fleet Server Active](./fleet-active-1.png) |
+| ![Windows Agent Enrollment](images/elastic-installation-windows.png) | ![Fleet Server Active](images/fleet-active-1.png) |
 
 ---
 
@@ -70,4 +70,4 @@ With both `jose-siem` and `corpcontrol` reporting healthy statuses back to Fleet
 
 | Dual-Agent Fleet Health | Kibana Telemetry Stream Verification |
 | :---: | :---: |
-| ![Dual Fleet Status](./fleet-active-2.png) | ![Live Log Stream Hits](./final-logs.png) |
+| ![Dual Fleet Status](images/fleet-active-2.png) | ![Live Log Stream Hits](images/final-logs.png) |
